@@ -9,7 +9,7 @@ namespace GitHubSysProg{
 
         public static readonly HttpClient HttpClient = new();
         
-        public static void Main(string[] args){
+        public static async Task Main(string[] args){
             HttpListener listener = new HttpListener();
             listener.Prefixes
                     .Add("http://localhost:8080/");
@@ -27,12 +27,12 @@ namespace GitHubSysProg{
 
             while (true)
             {
-                HttpListenerContext context = listener.GetContext();
-                ThreadPool.QueueUserWorkItem(HandleRequest, context);
+                HttpListenerContext context = await listener.GetContextAsync();
+                await Task.Run(() => HandleRequest(context));
             }
             
         }
-        private static void HandleRequest(object? state){
+        private static async Task HandleRequest(object? state){
             if (state == null)
                 return;
 
@@ -74,15 +74,19 @@ namespace GitHubSysProg{
                 else
                 {
                     var apiUrl = $"https://api.github.com/repos/{key}/stats/contributors";
-                    var response = HttpClient.GetAsync(apiUrl).Result;
-                    response.EnsureSuccessStatusCode();
-                    if (response.StatusCode == HttpStatusCode.Accepted) {
-                        Console.WriteLine("Request accepted. Waiting for response...");
-                        contributors = new List<Contributor>();
-                    } else {
+                    var response = await HttpClient.GetAsync(apiUrl);
+
+                    
+                    if (response.StatusCode == HttpStatusCode.OK) {
                         var content = response.Content.ReadAsStringAsync().Result;
                         contributors = JsonConvert.DeserializeObject<List<Contributor>>(content);
                         Cache.WriteToCache(key, contributors);
+                    } else if (response.StatusCode == HttpStatusCode.Accepted) {
+                        Console.WriteLine("Request accepted. Waiting for response...");
+                        contributors = new List<Contributor>();
+                    } else {
+                        context.Response.StatusCode = (int)response.StatusCode;
+                        contributors = new List<Contributor>();
                     }
                 }
 
